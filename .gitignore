@@ -1,0 +1,9 @@
+**/__pycache__/ 
+.ipynb_checkpoints
+
+**/*dataset*/
+**/*csv_folder*/
+**/saved_vECG/
+**/all_data_for_ml.csv
+**/short_data_for_ml.csv
+
