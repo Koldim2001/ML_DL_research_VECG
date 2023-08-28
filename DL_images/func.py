@@ -616,8 +616,8 @@ def train_regressor(model_CNN, dataloader_train, dataloader_val, batch_size,
 
                 # Вывод значения функции потерь на каждой 10 эпохе
                 if ((epoch+1) % 5 == 0) or epoch==0:
-                    print(f'Epoch {epoch+1}/{N_EPOCHS}, Train MSE: {mse_epoch_train:.6f}, Train MAE: '
-                    f'{mae_epoch_train:.4f} Val MSE: {mse_epoch_val:.4f} , Val MAE:{mae_epoch_val:.4f}')
+                    print(f'Epoch {epoch+1}/{N_EPOCHS}, Train MSE: {mse_epoch_train:.3f}, Train MAE: '
+                    f'{mae_epoch_train:.3f} Val MSE: {mse_epoch_val:.3f}, Val MAE:{mae_epoch_val:.3f}')
                 
                 if epoch > 5 and mse_epoch_val < best_mse:
                     best_mse = mse_epoch_val
