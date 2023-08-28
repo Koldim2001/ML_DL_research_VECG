@@ -170,7 +170,7 @@ def train_classifier(model_CNN, dataloader_train, dataloader_val, batch_size,
     if dataset_name != None:
         dataset_name = dataset_name.split('/')[-1]
 
-    directory_save = 'models'
+    directory_save = 'models_classification'
 
     if not os.path.exists(directory_save):
         os.makedirs(directory_save)
@@ -243,15 +243,12 @@ def train_classifier(model_CNN, dataloader_train, dataloader_val, batch_size,
 
             itr_record = 0
             max_epoch_f1_val = 0
-            max_epoch_acc_val = 0
             EPOCHS = epochs
 
             for epoch in range(EPOCHS):
                 # Обнуление градиентов параметров модели
                 model.train()
                 running_loss_train = 0
-                running_corrects_train = 0
-                running_f1_train = 0
                 all_outputs = []
                 all_targets = []
 
@@ -276,13 +273,8 @@ def train_classifier(model_CNN, dataloader_train, dataloader_val, batch_size,
 
                     running_loss_train += loss / batch_temp_size
 
-                    #running_corrects_train += accuracy(outputs, targets)
-                    #running_f1_train += weighted_avg_f1(outputs, targets)
-
 
                 epoch_loss_train = running_loss_train / len(dataloader_train)
-                #epoch_acc_train = running_corrects_train / len(dataloader_train)
-                #epoch_f1_train = running_f1_train / len(dataloader_train)
 
                 epoch_acc_train = accuracy(all_outputs, all_targets)
                 epoch_f1_train = weighted_avg_f1(all_outputs, all_targets)
@@ -292,8 +284,6 @@ def train_classifier(model_CNN, dataloader_train, dataloader_val, batch_size,
                 model.eval()
                 with torch.no_grad():
                     val_loss = 0.0
-                    running_corrects_val = 0
-                    running_f1_val = 0
                     all_outputs = []
                     all_targets = []
                     for i, (inputs, targets) in enumerate(dataloader_val):
@@ -304,16 +294,12 @@ def train_classifier(model_CNN, dataloader_train, dataloader_val, batch_size,
                         outputs = model(inputs)
 
                         val_loss += loss_func(outputs, targets).item() / batch_temp_size
-                        #running_corrects_val += accuracy(outputs, targets)  
-                        #running_f1_val += weighted_avg_f1(outputs, targets)
 
                         all_outputs.extend(outputs.cpu().detach().numpy())
                         all_targets.extend(targets.cpu().numpy())
 
                     # Вычисление среднего значения функции потерь на валидационном наборе данных
                     epoch_loss_val =  val_loss / len(dataloader_val)
-                    #epoch_acc_val =  running_corrects_val / len(dataloader_val)
-                    #epoch_f1_val =  running_f1_val / len(dataloader_val)
                     epoch_acc_val = accuracy(all_outputs, all_targets)
                     epoch_f1_val = weighted_avg_f1(all_outputs, all_targets)
 
@@ -367,7 +353,15 @@ def train_classifier(model_CNN, dataloader_train, dataloader_val, batch_size,
 
 
 
+
+
+
 ##################################################################################
+
+
+
+
+
 
 
 
@@ -510,7 +504,10 @@ def train_regressor(model_CNN, dataloader_train, dataloader_val, batch_size,
                 batches_train = 0
                 batches_val = 0
                 running_loss_train = 0
-                running_corrects_train = 0
+                running_corrects_train_EF_5 = 0
+                running_corrects_train_EF_10 = 0
+                running_corrects_val_EF_5 = 0
+                running_corrects_val_EF_10 = 0
                 target_EF_all = []
                 output_EF_all = []
 
@@ -523,7 +520,7 @@ def train_regressor(model_CNN, dataloader_train, dataloader_val, batch_size,
                     optimizer.zero_grad()
 
                     # Прямой проход (forward pass)
-                    outputs = model(inputs)
+                    outputs = model(inputs).to(torch.float64)
 
                     # Вычисление значения функции потерь
                     loss = criterion(outputs, targets)
