@@ -12,6 +12,7 @@ import plotly.express as px
 from shapely.geometry import Polygon
 import plotly.graph_objects as go
 import warnings
+from sklearn.preprocessing import StandardScaler
 
 
 def convert_to_posix_path(windows_path):
@@ -508,6 +509,26 @@ def processing(data):
             if not os.path.exists('point_cloud_dataset'):
                 os.makedirs('point_cloud_dataset')
             df_save.to_csv('point_cloud_dataset/' + name, index=False)
+
+            #### Еще нормализованные данные сохраним:
+            df_selected = df_term[['x', 'y', 'z']]
+            # Нормализуем данные
+            scaler = StandardScaler()
+            df_normalized = pd.DataFrame(scaler.fit_transform(df_selected), columns=['x', 'y', 'z'])
+
+            # Путь к файлу CSV для сохранения
+            file_name_without_extension = os.path.splitext(os.path.basename(data_edf))[0]
+            name = f'{file_name_without_extension}_period_{n_term_start}_normalized.csv'
+
+            # Создаем папку для записи, если её еще нет
+            output_folder = 'point_cloud_dataset_normalized'
+            if not os.path.exists(output_folder):
+                os.makedirs(output_folder)
+
+            # Сохраняем нормализованные данные в CSV файл
+            output_path = os.path.join(output_folder, name)
+            df_normalized.to_csv(output_path, index=False)
+
             return df_save.shape[0]
 
 
