@@ -191,52 +191,11 @@ def evaluate_model(model, data_loader):
     
 
 
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
 def train_pointnet(model_pointnet, dataloader_train, dataloader_val, batch_size, 
                      name_save, start_weight=None, 
                      name_experiment=None, lr=1e-4, epochs=100,
                      scheduler=True, scheduler_step_size=10, dataset_name=None,
-                     f_sampling=700, seed=42,
+                     f_sampling=700, seed=42, n_points=512,
                      normalize='Centering and max value scaling', gamma=0.5, noise_std=0):
     """Обучение классификационной сверточной сети
 
@@ -308,8 +267,9 @@ def train_pointnet(model_pointnet, dataloader_train, dataloader_val, batch_size,
         
         mlflow.log_param("Normalize", normalize)
         mlflow.log_param("Training random noise std", noise_std)
-        mlflow.log_param("Input shape", 'torch.Size([batch_size, 512, 3])')
+        mlflow.log_param("Input shape", f'torch.Size([batch_size, {n_points}, 3])')
         mlflow.log_param("F sampling ECG", f_sampling)
+        mlflow.log_param("Points samping", n_points)
         if scheduler:
             mlflow.log_param("scheduler", 'On')
             mlflow.log_param("scheduler_step_size", scheduler_step_size)
