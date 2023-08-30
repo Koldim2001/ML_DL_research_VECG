@@ -6,6 +6,8 @@
 **/saved_vECG/
 **/all_data_for_ml.csv
 **/short_data_for_ml.csv
+**/all_data_for_ml_old.csv
+**/short_data_for_ml_old.csv
 
 **/catboost_info
 **/mlartifacts
