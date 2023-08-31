@@ -69,7 +69,7 @@ def pcshow(xs,ys,zs):
     fig.show()
    
 
-def pointnetloss(outputs, labels, m3x3, m64x64, alpha = 0.0001):
+def pointnetloss(outputs, labels, m3x3, m64x64, alpha=0.0001):
     criterion = torch.nn.NLLLoss()
     bs=outputs.size(0)
     id3x3 = torch.eye(3, requires_grad=True).repeat(bs,1,1)
@@ -200,7 +200,7 @@ def train_pointnet(model_pointnet, dataloader_train, dataloader_val, batch_size,
     """Обучение классификационной сверточной сети
 
     Args:
-        model_CNN: Класс модели pytorch
+        model_pointnet: Класс модели pytorch
 
         dataloader_train: Обучающий даталоудер
 
@@ -230,7 +230,8 @@ def train_pointnet(model_pointnet, dataloader_train, dataloader_val, batch_size,
 
         gamma: Величина коэффициента lr шедулера 
 
-        n_neurons: Число нейронов промежуточного fc слоя для ResNet
+        noise_std: Величина std шума на трейне
+
     """
     device = torch.device("cuda") if torch.cuda.is_available() else torch.device("cpu")
     torch.manual_seed(seed)
@@ -318,7 +319,6 @@ def train_pointnet(model_pointnet, dataloader_train, dataloader_val, batch_size,
             mlflow.log_metric("train_epoch_loss", train_epoch_loss, step=(epoch+1))
             mlflow.log_metric("train_epoch_f1", train_epoch_f1, step=(epoch+1))
 
-            #correct = total = 0
 
             # validation
             model.eval()
@@ -335,9 +335,7 @@ def train_pointnet(model_pointnet, dataloader_train, dataloader_val, batch_size,
 
                     all_outputs.extend(outputs.cpu().detach().numpy())
                     all_targets.extend(labels.cpu().numpy())
-                    #_, predicted = torch.max(outputs.data, 1)
-                    #total += labels.size(0)
-                    #correct += (predicted == labels).sum().item()
+
 
             val_epoch_loss = running_loss / len(dataloader_val)
             val_epoch_acc = accuracy(all_outputs, all_targets)
@@ -356,11 +354,7 @@ def train_pointnet(model_pointnet, dataloader_train, dataloader_val, batch_size,
                     f' Train Aсс: {train_epoch_acc:.4f}'
                     f' Val Loss: {val_epoch_loss:.4f}, Val Acc:{val_epoch_acc:.4f} ')
 
-            #val_acc = 100. * correct / total
-            #print('Valid accuracy: %d %%' % val_acc)
 
-            # save the model
-            #torch.save(model.state_dict(), "models/save.pth")
             if epoch >= 1 and val_epoch_f1 > max_epoch_f1_val:
                 max_epoch_f1_val = val_epoch_f1
                 acc_model = val_epoch_acc
