@@ -331,6 +331,7 @@ def train_classifier(model_CNN, dataloader_train, dataloader_val, batch_size,
                     model_scripted = torch.jit.script(model_to_save)
                     name_save_model = directory_save + '/' + name_save +'.pt'
                     model_scripted.save(name_save_model) 
+                    #torch.save(model, directory_save + '/' + name_save +'.pth')
                     evaluate_model(model=model, data_loader=dataloader_val)
                 
             print('Обучение завершено')
