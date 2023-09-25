@@ -103,29 +103,6 @@ def loop(df_term, name, show=False):
     else:
         name_loop = name
 
-    if show:
-        plt.figure(figsize=(15, 5), dpi=80)
-        plt.subplot(1, 3, 1)
-        plt.plot(df_term.x,df_term.y)
-        plt.title('Фронтальная плоскость')
-        plt.xlabel('X')
-        plt.ylabel('Y')
-
-        plt.subplot(1, 3, 2)
-        plt.plot(df_term.y,df_term.z)
-        plt.title('Сагиттальная плоскость')
-        plt.xlabel('Y')
-        plt.ylabel('Z')
-
-        plt.subplot(1, 3, 3)
-        plt.plot(df_term.x, df_term.z)
-        plt.title('Аксиальная плоскость')  
-        plt.xlabel('X')
-        plt.ylabel('Z')
-
-        plt.suptitle(f'{name_loop} петля', fontsize=16)
-        plt.show()
-    
     points = list(zip(df_term['x'], df_term['y']))
     area_inside_loop_1 = calculate_area(points)
     #print(f"Площадь петли {name_loop} во фронтальной плоскости:", area_inside_loop_1)
@@ -492,27 +469,6 @@ def processing(data):
         df_term = pd.concat([df_term, df_row])
         df_term['size'] = 100 
         
-    # Построение проекций ВЭКГ:
-    if not cancel_showing:
-        plt.figure(figsize=(15, 5), dpi=90)
-        plt.subplot(1, 3, 1)
-        plt.plot(df_term.x,df_term.y)
-        plt.title('Фронтальная плоскость')
-        plt.xlabel('X')
-        plt.ylabel('Y')
-
-        plt.subplot(1, 3, 2)
-        plt.plot(df_term.y,df_term.z)
-        plt.title('Сагиттальная плоскость')
-        plt.xlabel('Y')
-        plt.ylabel('Z')
-
-        plt.subplot(1, 3, 3)
-        plt.plot(df_term.x, df_term.z)
-        plt.title('Аксиальная плоскость')  
-        plt.xlabel('X')
-        plt.ylabel('Z')
-        plt.show()
 
     # Интерактивное 3D отображение
     if plot_3D:
@@ -659,12 +615,12 @@ def processing(data):
         # Создадим папки для записи если их еще нет:
         if not os.path.exists('saved_vECG'):
             os.makedirs('saved_vECG')
-        if not os.path.exists('saved_vECG/frontal_plane'):
-            os.makedirs('saved_vECG/frontal_plane')
-        if not os.path.exists('saved_vECG/sagittal_plane'):
-            os.makedirs('saved_vECG/sagittal_plane')
-        if not os.path.exists('saved_vECG/axial_plane'):
-            os.makedirs('saved_vECG/axial_plane')      
+        if not os.path.exists('saved_vECG/XY_plane'):
+            os.makedirs('saved_vECG/XY_plane')
+        if not os.path.exists('saved_vECG/YZ_plane'):
+            os.makedirs('saved_vECG/YZ_plane')
+        if not os.path.exists('saved_vECG/XZ_plane'):
+            os.makedirs('saved_vECG/XZ_plane')      
 
         # После каждого plt.show() добавим код для сохранения графика в ЧБ формате
         plt.figure(figsize=(7, 7), dpi=150)
@@ -672,7 +628,7 @@ def processing(data):
         plt.ylim([-1.03, 1.03])
         plt.plot(df_term.x_scaled, df_term.y_scaled, color='black')
         plt.axis('off')  # Отключить оси и подписи
-        name_save = 'saved_vECG/frontal_plane/' + name
+        name_save = 'saved_vECG/XY_plane/' + name
         plt.savefig(name_save, bbox_inches='tight', pad_inches=0, transparent=True, facecolor='white')
         plt.close()
 
@@ -681,7 +637,7 @@ def processing(data):
         plt.ylim([-1.03, 1.03])
         plt.plot(df_term.y_scaled, df_term.z_scaled, color='black')
         plt.axis('off')  # Отключить оси и подписи
-        name_save = 'saved_vECG/sagittal_plane/' + name
+        name_save = 'saved_vECG/YZ_plane/' + name
         plt.savefig(name_save, bbox_inches='tight', pad_inches=0, transparent=True, facecolor='white')
         plt.close()
 
@@ -690,7 +646,7 @@ def processing(data):
         plt.ylim([-1.03, 1.03])  
         plt.plot(df_term.x_scaled, df_term.z_scaled, color='black')
         plt.axis('off')  # Отключить оси и подписи
-        name_save = 'saved_vECG/axial_plane/' + name
+        name_save = 'saved_vECG/XZ_plane/' + name
         plt.savefig(name_save, bbox_inches='tight', pad_inches=0, transparent=True, facecolor='white')
         plt.close()
         #print('Фотографии сохранены в папке saved_vECG')
