@@ -862,7 +862,6 @@ def split(data):
     dataset_path = data["dataset_path"]
     path_final = data["splitted_dataset_name"]
     folder_csv = data["csv_folder"]
-    excel_path = data["excel_file"]
     
     path_final_val = path_final +'/val'
     path_final_train = path_final +'/train'
@@ -892,12 +891,7 @@ def split(data):
         if not os.path.exists(dataset_path):
             raise Exception(f'Датасет {dataset_path} с изображениями не найден')
         
-        if not os.path.exists(excel_path):
-            raise Exception(f'Иксель файл {excel_path} не найден') 
-
-        df = pd.read_excel(excel_path)
- 
-
+        
         # Создаем список для хранения результатов в виде словарей
         result_data_train = []   
         result_data_val = []  
@@ -907,36 +901,37 @@ def split(data):
         for image in os.listdir(dataset_path):
             file_name = image.split('_period')[0]
             if file_name in train_images:
-                if int(file_name) in df['FileID'].values:
-                    # Получаем значение "KCl" из столбца df
-                    EF_value = df[df['FileID'] == int(file_name)]['EF'].values[0]
-                    
-                    # Создаем словарь для текущего файла
-                    new_row = {'File_Name': image, 'EF': EF_value}
-                    
-                    # Добавляем словарь в список результатов
-                    result_data_train.append(new_row)
-
-                    # Копируем файл в нужную папку
-                    shutil.copy2(dataset_path + '/' + image, path_final_train)
+                if "C" in file_name:
+                    # болен/ не болен
+                    Ill = 0
                 else:
-                    list_not_found_train.append(file_name)
+                    Ill = 1
+                
+                # Создаем словарь для текущего файла
+                new_row = {'File_Name': image, 'Ill': Ill}
+                
+                # Добавляем словарь в список результатов
+                result_data_train.append(new_row)
+
+                # Копируем файл в нужную папку
+                shutil.copy2(dataset_path + '/' + image, path_final_train)
+        
             if file_name in val_images:
-                if int(file_name) in df['FileID'].values:
-                    # Получаем значение "KCl" из столбца df
-                    EF_value = df[df['FileID'] == int(file_name)]['EF'].values[0]
-                    
-                    # Создаем словарь для текущего файла
-                    new_row = {'File_Name': image, 'EF': EF_value}
-                    
-                    # Добавляем словарь в список результатов
-                    result_data_val.append(new_row)
-
-                    # Копируем файл в нужную папку
-                    shutil.copy2(dataset_path + '/' + image, path_final_val)
+                if "C" in file_name:
+                    # болен/ не болен
+                    Ill = 0
                 else:
-                    list_not_found_val.append(file_name)
-                    #print(f'Файл {file_name} в иксель таблице не найден')
+                    Ill = 1
+                    
+                # Создаем словарь для текущего файла
+                new_row = {'File_Name': image, 'Ill': Ill}
+                
+                # Добавляем словарь в список результатов
+                result_data_val.append(new_row)
+
+                # Копируем файл в нужную папку
+                shutil.copy2(dataset_path + '/' + image, path_final_val)
+
     
     # Создаем DataFrame из списка словарей
     result_df_train = pd.DataFrame(result_data_train)

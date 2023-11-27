@@ -66,7 +66,8 @@ def pcshow(xs,ys,zs):
                       line=dict(width=2,
                       color='DarkSlateGrey')),
                       selector=dict(mode='markers'))
-    fig.show()
+    #fig.show()
+    return fig
    
 
 def pointnetloss(outputs, labels, m3x3, m64x64, alpha=0.0001):
@@ -166,7 +167,7 @@ def evaluate_model(model, data_loader):
 
 
     # Сохранение отчета в текстовый файл
-    report = classification_report(true_labels, predicted_labels)
+    report = classification_report(true_labels, predicted_labels, zero_division=1)
     output_file = "classification_report.txt"
     with open(output_file, "w") as f:
         f.write(report)
