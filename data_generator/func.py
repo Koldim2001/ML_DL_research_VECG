@@ -502,13 +502,13 @@ def processing(data):
             name = f'{file_name_without_extension}_period_{n_term_start}_normalized.csv'
 
             # Создаем папку для записи, если её еще нет
-            output_folder = 'point_cloud_dataset_normalized'
-            if not os.path.exists(output_folder):
-                os.makedirs(output_folder)
+            #output_folder = 'point_cloud_dataset_normalized'
+            #if not os.path.exists(output_folder):
+            #    os.makedirs(output_folder)
 
             # Сохраняем нормализованные данные в CSV файл
-            output_path = os.path.join(output_folder, name)
-            df_normalized.to_csv(output_path, index=False)
+            #output_path = os.path.join(output_folder, name)
+            #df_normalized.to_csv(output_path, index=False)
 
             return df_save.shape[0]
 
@@ -907,9 +907,9 @@ def split(data):
         for image in os.listdir(dataset_path):
             file_name = image.split('_period')[0]
             if file_name in train_images:
-                if int(file_name) in df['FileID'].values:
+                if file_name in df['FileID'].values:
                     # Получаем значение "KCl" из столбца df
-                    EF_value = df[df['FileID'] == int(file_name)]['EF'].values[0]
+                    EF_value = df[df['FileID'] == file_name]['EF'].values[0]
                     
                     # Создаем словарь для текущего файла
                     new_row = {'File_Name': image, 'EF': EF_value}
@@ -922,9 +922,9 @@ def split(data):
                 else:
                     list_not_found_train.append(file_name)
             if file_name in val_images:
-                if int(file_name) in df['FileID'].values:
+                if file_name in df['FileID'].values:
                     # Получаем значение "KCl" из столбца df
-                    EF_value = df[df['FileID'] == int(file_name)]['EF'].values[0]
+                    EF_value = df[df['FileID'] == file_name]['EF'].values[0]
                     
                     # Создаем словарь для текущего файла
                     new_row = {'File_Name': image, 'EF': EF_value}

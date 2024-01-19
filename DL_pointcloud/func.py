@@ -256,7 +256,7 @@ def train_pointnet(model_pointnet, dataloader_train, dataloader_val, batch_size,
         model = model_pointnet()
         mlflow.log_param("Model", 'PointNet')
         if start_weight != None:
-            model = torch.jit.load(start_weight)
+            model.load_state_dict(torch.load(start_weight))
 
         optimizer = torch.optim.Adam(model.parameters(), lr=lr)
         if scheduler:
