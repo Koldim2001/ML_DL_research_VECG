@@ -9,5 +9,7 @@
 **/all_data_for_ml_old.csv
 **/short_data_for_ml_old.csv
 
+DL_pointcloud/models
+
 **/catboost_info
 **/mlartifacts

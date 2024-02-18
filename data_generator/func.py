@@ -1,4 +1,3 @@
-import mne
 import math
 import pandas as pd
 from matplotlib import pyplot as plt
@@ -13,6 +12,8 @@ from shapely.geometry import Polygon
 import plotly.graph_objects as go
 import warnings
 from sklearn.preprocessing import StandardScaler
+import plotly.io as pio
+import pyedflib
 
 
 def convert_to_posix_path(windows_path):
@@ -232,45 +233,49 @@ def apply_filter_mean(column, window_size):
 
 
 
+
+
 #------------------------------------------ГЛАВНЫЙ КОД--------------------------------------#
 
-def processing(data):
+def get_VECG(input_data: dict):
     # ------------------ ARG parse ------------------
-    data_edf = data["data_edf"]
-    n_term_start = data["n_term_start"]
-    n_term_finish = data["n_term_finish"] 
-    filt = data["filt"]
-    f_sreza = data["f_sreza"]
-    Fs_new = data["f_sampling"]
-    show_detect_pqrst = data["show_detected_pqrst"]
-    show_ECG = data["show_ecg"]
-    plot_3D = data["plot_3d"]
-    save_images = data["save_images"]
-    show_log_scaling = data["show_log_scaling"]
-    cancel_showing = data["cancel_showing"]
-    QRS_loop_area = data["qrs_loop_area"]
-    T_loop_area = data["t_loop_area"]
-    show_log_loop_area = data["show_log_loop_area"]
-    count_qrst_angle = data["count_qrst_angle"]
-    show_log_qrst_angle = data["show_log_qrst_angle"]
-    save_coord = data["save_coord"] 
-    mean_filter = data["mean_filter"]
+    data_edf = input_data["data_edf"]
+    n_term_start = input_data["n_term_start"]
+    n_term_finish = input_data["n_term_finish"] 
+    filt = input_data["filt"]
+    f_sreza = input_data["f_sreza"]
+    Fs_new = input_data["f_sampling"]
+    show_ECG = input_data["show_ecg"]
+    plot_3D = input_data["plot_3d"]
+    QRS_loop_area = input_data["qrs_loop_area"]
+    T_loop_area = input_data["t_loop_area"]
+    count_qrst_angle = input_data["count_qrst_angle"]
+    mean_filter = input_data["mean_filter"]
+    predict_res = input_data["predict"]
+    plot_projections = input_data["plot_projections"]
+    logs = input_data["logs"]
+    save_coord = input_data["save_coord"] 
+    pr_delta = input_data["pr_delta"]
+    show_XYZ = input_data["show_xyz"]
+    show_loops = False
+    show_angle = False
+    show_detect_pqrst = False
+  
+    pio.templates.default = "plotly"  # Используем классический стиль Plotly
 
-    ## СЛЕДУЕТ УБРАТЬ ПРИ ТЕСТИРОВАНИИ:
+    if logs:
+        show_loops = True
+        show_angle = True
+        show_detect_pqrst = True
+
+    plotly_figures = []
+    output_results = {}
+
+
     # Устанавливаем фильтр для игнорирования всех RuntimeWarning
     warnings.filterwarnings("ignore", category=RuntimeWarning)
 
-    # Включаем режим, позволяющий открывать графики сразу все
-    plt.ion()
-
-    if cancel_showing:
-        show_detect_pqrst = False
-        show_ECG = False
-        plot_3D = False
-        show_log_scaling = False
-        show_log_loop_area = False
-        show_log_qrst_angle = False
-
+    # Отработка ошибок введения номеров периодов ЭКГ
     if n_term_finish != None:
         if n_term_finish < n_term_start:
             raise ValueError("Ошибка: n_term_finish должно быть >= n_term_start")
@@ -279,19 +284,37 @@ def processing(data):
     else:
         n_term = n_term_start
 
+    # Приведение путей к posix формату
     if '\\' in data_edf:
-        # Преобразуем путь в формат Posix
         data_edf = convert_to_posix_path(data_edf)
 
     # Считывание edf данных:
-    data = mne.io.read_raw_edf(data_edf, verbose=0)
-    raw_data = data.get_data()
-    info = data.info
-    channels = data.ch_names
-    fd = info['sfreq'] # Частота дискретизации
-    df = pd.DataFrame(data=raw_data.T,    # values
-                index=range(raw_data.shape[1]),  # 1st column as index
-                columns=channels)  # 1st row as the column names
+    # Открываем EDF файл
+    f = pyedflib.EdfReader(data_edf)
+
+    # Получаем информацию о каналах
+    num_channels = f.signals_in_file
+    channels = f.getSignalLabels()
+
+    # Читаем данные по каналам
+    raw_data = []
+    for i in range(num_channels):
+        channel_data = f.readSignal(i)
+        raw_data.append(channel_data)
+
+    # Получаем частоту дискретизации
+    fd = f.getSampleFrequency(0)
+
+    # Закрываем файл EDF после чтения
+    f.close()
+
+    raw_data = np.array(raw_data)
+
+    # Создаем DataFrame
+    df = pd.DataFrame(data=raw_data.T,   
+            index=range(raw_data.shape[1]), 
+            columns=channels)  
+
     # Переименование столбцов при необходимости:
     if 'ECG I-Ref' in df.columns:
         df = rename_columns(df)
@@ -329,12 +352,14 @@ def processing(data):
         df_new = pd.DataFrame()
         for graph in channels:
             sig = np.array(df[graph])
-            sos = scipy.signal.butter(1, 100, 'lp', fs=Fs_new, output='sos')
+            sos = scipy.signal.butter(1, 150, 'lp', fs=Fs_new, output='sos')
             avg = np.mean(sig)
             filtered = scipy.signal.sosfilt(sos, sig)
             filtered += avg
             df_new[graph] = pd.Series(filtered)
         df = df_new.copy()
+    
+    df['time'] = time_new
 
     ## Поиск точек PQRST:
     n_otvedenie = 'I'
@@ -358,85 +383,75 @@ def processing(data):
         # При повторной проблеме выход из функции:
         if rpeaks['ECG_R_Peaks'].size <= 3:
             print('Сигналы ЭКГ слишком шумные для анализа')
-            # Отобразим эти шумные сигналы:
-            if not cancel_showing:
-                num_channels = len(channels)
-                fig, axs = plt.subplots(int(num_channels/2), 2, figsize=(11, 8), sharex=True)
-                for i, graph in enumerate(channels):
-                    row = i // 2
-                    col = i % 2
-                    sig = np.array(df[graph])
-                    axs[row, col].plot(time_new, sig)
-                    axs[row, col].set_title(graph)
-                    axs[row, col].set_xlim([0, 6])
-                    axs[row, col].set_title(graph)
-                    axs[row, col].set_xlabel('Time (seconds)')
-                plt.tight_layout()
-                plt.show()
-                plt.ioff()
-                plt.show()
-            return # Выход из функции досрочно
+            
+            # Создаем подразделы для графиков
+            num_channels = len(channels)
+            rows = int(num_channels / 2)
+            cols = 2
+            fig = make_subplots(rows=rows, cols=cols, shared_xaxes=True, subplot_titles=channels)
+
+            # Задаем общий интервал по оси X
+            x_range = [1, 7]
+
+            # Добавляем графики в subplot
+            for i, graph in enumerate(channels):
+                row = i // 2 + 1
+                col = i % 2 + 1
+                sig = df[graph]
+                trace = go.Scatter(x=time_new, y=sig, mode='lines', name=graph,
+                                   showlegend=False, line=dict(color='blue'))
+                fig.add_trace(trace, row=row, col=col)
+                fig.update_xaxes(row=row, col=col, range=x_range)
+
+            # Настроим макет и отобразим графики
+            fig.update_layout(title_text="Сигналы ЭКГ, которые не получилось обработать")
+            output_results['text'] = 'too_noisy'
+            output_results['charts'] = [fig]
+            return output_results
+
+    # Поиск медианного размера кардиоцикла для данного пациента (нужно для рассчета сдвига pr)
+    dif_rr = np.diff(rpeaks['ECG_R_Peaks'])
+    median_rr = np.median(dif_rr)
 
     # Поиск точек pqst:
     _, waves_peak = nk.ecg_delineate(signal, rpeaks, sampling_rate=Fs_new, method="peak")
 
     # Отображение PQST точек на сигнале первого отведения (или второго при ошибке на первом)
     if show_detect_pqrst:
-        plt.figure(figsize=(12, 5))
+        # Создаем график сигнала
+        fig = go.Figure()
+        fig.add_trace(go.Scatter(x=time_new, y=signal, mode='lines', name='Signal', line=dict(color='black')))
 
-        # Отобразим сигнал на графике
-        plt.plot(time_new, signal, label='Signal', color='black')
-
-        # Отобразим вертикальные линии для каждого типа точек
+        # Отображаем вертикальные линии для каждой точки
+        colors = {'ECG_P_Peaks': 'red', 'ECG_Q_Peaks': 'green', 'ECG_S_Peaks': 'magenta', 'ECG_T_Peaks': 'blue'}
         for wave_type, peaks in waves_peak.items():
             if wave_type in ['ECG_P_Peaks', 'ECG_Q_Peaks', 'ECG_S_Peaks', 'ECG_T_Peaks']:
                 wave_type_label = wave_type.split('_')[1]  # Извлекаем часть имени для метки графика
                 for peak in peaks:
                     if not np.isnan(peak):  # Проверяем, что значение точки не является NaN
-                        if wave_type == 'ECG_P_Peaks':
-                            plt.axvline(x=time_new[int(peak)], linestyle='dotted',
-                                        color='red', label=f'{wave_type_label} Peak')
-                        elif wave_type == 'ECG_Q_Peaks':
-                            plt.axvline(x=time_new[int(peak)], linestyle='dotted',
-                                        color='green', label=f'{wave_type_label} Peak')
-                        elif wave_type == 'ECG_S_Peaks': 
-                            plt.axvline(x=time_new[int(peak)], linestyle='dotted',
-                                        color='m', label=f'{wave_type_label} Peak')
-                        else:  
-                            plt.axvline(x=time_new[int(peak)], linestyle='dotted',
-                                        color='blue', label=f'{wave_type_label} Peak')
-        plt.xlim([0.5, 6])
-        plt.xlabel('Time (seconds)')
-        plt.ylabel('Signal ECG I')
-        plt.title(f'Детекция PQRST на {n_otvedenie} отведении')
-        plt.show()
+                        fig.add_shape(go.layout.Shape(
+                            type='line',
+                            x0=time_new[int(peak)],
+                            x1=time_new[int(peak)],
+                            y0=min(signal),
+                            y1=max(signal),
+                            line=dict(color=colors[wave_type], dash='dot'),
+                            name=f'{wave_type_label} Peak'
+                        ))
 
-    # Отображение многоканального ЭКГ с детекцией R зубцов
-    if show_ECG:
-        num_channels = len(channels)
-        fig, axs = plt.subplots(int(num_channels/2), 2, figsize=(11, 8), sharex=True)
+        # Настройка макета и отображение графика
+        fig.update_layout(
+            xaxis=dict(range=[2, 5], title='Time (seconds)'),
+            yaxis=dict(title='Signal ECG'),
+            title=f'Детекция PQRST на {n_otvedenie} отведении'
+        )
+        plotly_figures.append(fig)
 
-        for i, graph in enumerate(channels):
-            row = i // 2
-            col = i % 2
-
-            sig = np.array(df[graph])
-
-            axs[row, col].plot(time_new, sig)
-            axs[row, col].scatter(time_new[rpeaks['ECG_R_Peaks']], 
-                                  sig[rpeaks['ECG_R_Peaks']], color='red')
-            axs[row, col].set_title(graph)
-            axs[row, col].set_xlim([0, 6])
-            axs[row, col].set_title(graph)
-            axs[row, col].set_xlabel('Time (seconds)')
-
-        plt.tight_layout()
-        plt.show()
 
     # Выбор исследуемого периода/периодов
     i = n_term
     if type(i) == list:
-        print(f"Запрошен диапазон с {i[0]} по {i[1]} период включительно")
+        #print(f"Запрошен диапазон с {i[0]} по {i[1]} период включительно")
         fin = i[1]
         beg = i[0]
     else:
@@ -446,18 +461,97 @@ def processing(data):
 
     if beg-1 < 0 or fin >= len(rpeaks['ECG_R_Peaks']):
         #print('Запрашиваемого перода/диапазона периодов не существует')
-        return # Выход из функции досрочно
+        output_results['text'] = 'no_this_period'
+        output_results['charts'] = []
+        return output_results
     
-    start = rpeaks['ECG_R_Peaks'][beg-1]
-    end = rpeaks['ECG_R_Peaks'][fin]
+    start_r = rpeaks['ECG_R_Peaks'][beg-1]
+    end_r = rpeaks['ECG_R_Peaks'][fin]
+
+    # сдвиг pr:
+    start = start_r - int(median_rr * pr_delta)
+    end = end_r - int(median_rr * pr_delta)
     df_term = df.iloc[start:end,:]
     df_row = df.iloc[start:start+1,:]
-    df_term = pd.concat([df_term, df_row])
+    
 
+    # Отображение многоканального ЭКГ 
+    if show_ECG:
+        # Создаем подразделы для графиков
+        num_channels = len(channels)
+        rows = num_channels
+        cols = 1
+        fig = make_subplots(rows=rows, cols=cols, shared_xaxes=True, subplot_titles=channels)
+
+        # Задаем общий интервал по оси X
+        x_range = [0.5, 9.5]
+
+        fig_height = num_channels * 140
+
+        # Добавляем графики в subplot
+        for i, graph in enumerate(channels):
+            row = i + 1
+
+            trace1 = go.Scatter(x=df['time'], y=df[graph], mode='lines', name=graph,
+                                line=dict(color='blue'), showlegend=False)
+            trace2 = go.Scatter(x=df_term['time'], y=df_term[graph],
+                                mode='lines', name='Term_' + graph,
+                                line=dict(color='red'), showlegend=False)
+
+            fig.add_trace(trace1, row=row, col=1)
+            fig.add_trace(trace2, row=row, col=1)
+            fig.update_xaxes(row=row, col=1, range=x_range)
+
+        # Настроим макет и отобразим графики
+        fig.update_layout(title_text="Графики ЭКГ отведений", height=fig_height)
+        plotly_figures.append(fig)
+
+    # Отображение отведений XYZ
+    if show_XYZ:
+        df = make_vecg(df)
+        df_term_show = make_vecg(df_term.copy())
+        # Создаем подразделы для графиков
+        rows = 3
+        cols = 1
+        fig = make_subplots(rows=rows, cols=cols, shared_xaxes=True, subplot_titles=['X','Y','Z'])
+
+        # Задаем общий интервал по оси X
+        x_range = [0.5, 9.5]
+
+        fig_height = 3 * 140
+
+        # Добавляем графики в subplot
+        for i, graph in enumerate(['x','y','z']):
+            row = i + 1
+
+            trace1 = go.Scatter(x=df['time'], y=df[graph], mode='lines', name=graph,
+                                line=dict(color='blue'), showlegend=False)
+            trace2 = go.Scatter(x=df_term_show['time'], y=df_term_show[graph],
+                                mode='lines', name='Term_' + graph,
+                                line=dict(color='red'), showlegend=False)
+
+            fig.add_trace(trace1, row=row, col=1)
+            fig.add_trace(trace2, row=row, col=1)
+            fig.update_xaxes(row=row, col=1, range=x_range)
+
+        # Настроим макет и отобразим графики
+        fig.update_layout(title_text="Графики ВЭКГ отведений", height=fig_height)
+        plotly_figures.append(fig)
+  
+
+    # Проверка на адекватность значений median_rr
+    if (median_rr > Fs_new * 3) or (median_rr < Fs_new * 0.1):
+            print('Медиана RR имеет неадекватные значения (ошибка детектирования R пиков)')
+            output_results['text'] = 'too_noisy'
+            output_results['charts'] = plotly_figures
+            return output_results
+    
     # Расчет ВЭКГ
+    df_term = pd.concat([df_term, df_row])
     df_term = make_vecg(df_term)
     df_term['size'] = 100 # задание размера для 3D визуализации
 
+    # Сглаживание петель
     if mean_filter:
         df = make_vecg(df)
         window = int(Fs_new * 0.02)
@@ -469,16 +563,49 @@ def processing(data):
         df_term = pd.concat([df_term, df_row])
         df_term['size'] = 100 
         
+    # Построение проекций ВЭКГ:
+    if plot_projections:
+        # Создаем подразделы для графиков
+        fig = make_subplots(rows=1, cols=3, subplot_titles=['Фронтальная плоскость',
+                                                            'Сагиттальная плоскость',
+                                                            'Аксиальная плоскость'])
+
+        # График фронтальной плоскости
+        trace1 = go.Scatter(x=df_term['y'], y=df_term['z'], mode='lines', showlegend=False)
+        fig.add_trace(trace1, row=1, col=1)
+        fig.update_xaxes(title_text='Y', row=1, col=1)
+        fig.update_yaxes(title_text='Z', row=1, col=1)
+
+        # График сагиттальной плоскости
+        trace2 = go.Scatter(x=df_term['x'], y=df_term['z'], mode='lines', showlegend=False)
+        fig.add_trace(trace2, row=1, col=2)
+        fig.update_xaxes(title_text='X', row=1, col=2)
+        fig.update_yaxes(title_text='Z', row=1, col=2)
+
+        # График аксиальной плоскости
+        trace3 = go.Scatter(x=df_term['y'], y=df_term['x'], mode='lines', showlegend=False)
+        fig.add_trace(trace3, row=1, col=3)
+        fig.update_xaxes(title_text='Y', row=1, col=3)
+        fig.update_yaxes(title_text='X', row=1, col=3)
+
+        # Настроим макет и отобразим графики
+        fig.update_layout(height=510, width=1300, title_text="Проекции ВЭКГ на главные плоскости")
+
+        # Переворачиваем оси 
+        fig.update_xaxes(autorange="reversed", row=1, col=2)  # Переворачиваем ось x для trace2
+        fig.update_yaxes(autorange="reversed", row=1, col=3)   # Переворачиваем ось y для trace3
+
+        plotly_figures.append(fig)
+
 
     # Интерактивное 3D отображение
     if plot_3D:
-        fig = px.scatter_3d(df_term, x='x', y='y', z='z', size='size', size_max=10, opacity=1)
-        fig.update_layout(margin=dict(l=0, r=0, b=0, t=0))
-        fig.show()
+        fig = show_3d(df_term.x, df_term.y, df_term.z)
+        plotly_figures.append(fig)
+        
 
     # Работа при указании одного периода ЭКГ: 
     if  n_term_finish == None or n_term_finish == n_term_start:
-
         if save_coord:
             df_save = df_term[['x', 'y', 'z']]
             # Путь к файлу CSV для сохранения
@@ -491,27 +618,7 @@ def processing(data):
                 os.makedirs('point_cloud_dataset')
             df_save.to_csv('point_cloud_dataset/' + name, index=False)
 
-            #### Еще нормализованные данные сохраним:
-            df_selected = df_term[['x', 'y', 'z']]
-            # Нормализуем данные
-            scaler = StandardScaler()
-            df_normalized = pd.DataFrame(scaler.fit_transform(df_selected), columns=['x', 'y', 'z'])
-
-            # Путь к файлу CSV для сохранения
-            file_name_without_extension = os.path.splitext(os.path.basename(data_edf))[0]
-            name = f'{file_name_without_extension}_period_{n_term_start}_normalized.csv'
-
-            # Создаем папку для записи, если её еще нет
-            #output_folder = 'point_cloud_dataset_normalized'
-            #if not os.path.exists(output_folder):
-            #    os.makedirs(output_folder)
-
-            # Сохраняем нормализованные данные в CSV файл
-            #output_path = os.path.join(output_folder, name)
-            #df_normalized.to_csv(output_path, index=False)
-
             return df_save.shape[0]
-
 
         ## Масштабирование:
         # Поиск центра масс:
@@ -531,132 +638,83 @@ def processing(data):
         df_term['y_scaled'] = df_term['y_scaled'] / max_value
         df_term['z_scaled'] = df_term['z_scaled'] / max_value
 
-        # Показ логов масштабирования
-        if show_log_scaling:
-            plt.figure(figsize=(8, 10), dpi=80)
-            plt.subplot(3, 2, 1)
-            plt.plot(df_term.x, df_term.y)
-            plt.title('Исходные проекции')
-            plt.xlabel('X')
-            plt.ylabel('Y') 
-            plt.plot(x_center, y_center, marker='*', markersize=11, label='Центр масс', color='red')
-            plt.grid(True)
-            plt.legend()
+       
+        # СППР:
+        # Инференс модели pointnet:
+        message_predict = None
+        if predict_res:
+            point_cloud_array_innitial = df_term[['x', 'y', 'z']].values
+            
+            # Приведем к дискретизации 700 Гц на котором обучалась сеть
+            new_num_points = int(len(point_cloud_array_innitial) * 700 / Fs_new)
+            
 
-            plt.subplot(3, 2, 2)
-            plt.plot(df_term.x_scaled, df_term.y_scaled)
-            plt.title('Масштабированные проекции')
-            plt.xlabel('X')
-            plt.ylabel('Y') 
-            plt.xlim([-1.05, 1.05])
-            plt.ylim([-1.05, 1.05])
-            plt.grid(True)
+            # Инициализируем новый массив
+            point_cloud_array = np.zeros((new_num_points, 3))
 
-            plt.subplot(3, 2, 3)
-            plt.plot(df_term.y, df_term.z)
-            plt.xlabel('Y')
-            plt.ylabel('Z')
-            plt.plot(y_center, z_center, marker='*', markersize=11, label='Центр масс', color='red')
-            plt.grid(True)
-            plt.legend()
+            # Производим ресемплирование каждой координаты
+            for i in range(3):
+                point_cloud_array[:, i] = discrete_signal_resample_for_DL(point_cloud_array_innitial[:, i],
+                                                                          Fs_new, 700)
 
-            plt.subplot(3, 2, 4)
-            plt.plot(df_term.y_scaled, df_term.z_scaled)
-            plt.xlim([-1.05, 1.05])
-            plt.ylim([-1.05, 1.05])
-            plt.xlabel('Y')
-            plt.ylabel('Z')
-            plt.grid(True)
+            # Трансформация входных данных
+            val_transforms = transforms.Compose([
+                        Normalize(),
+                        PointSampler_weighted(512),
+                        ToTensor()
+                        ])
+            inputs = val_transforms(point_cloud_array)
+            inputs = torch.unsqueeze(inputs, 0)
+            inputs = inputs.double()
 
-            plt.subplot(3, 2, 5)
-            plt.plot(df_term.x, df_term.z)
-            plt.xlabel('X')
-            plt.ylabel('Z')
-            plt.plot(x_center, z_center, marker='*', markersize=12, label='Центр масс', color='red')
-            plt.grid(True)
-            plt.legend()
+            pointnet = PointNet().double()
+            # Загрузка сохраненных весов модели
+            pointnet.load_state_dict(torch.load('models_for_inference/pointnet.pth',
+                                                map_location=torch.device('cpu')))
+            pointnet.eval().to('cpu')
 
-            plt.subplot(3, 2, 6)
-            plt.plot(df_term.x_scaled, df_term.z_scaled)
-            plt.xlabel('X')
-            plt.ylabel('Z')
-            plt.xlim([-1.05, 1.05])
-            plt.ylim([-1.05, 1.05])
-            plt.grid(True)
-            plt.show()
+            # инференс:
+            with torch.no_grad():
+                outputs, __, __ = pointnet(inputs.transpose(1,2))
 
-        # Поиск площадей при задании на исследование одного периодка ЭКГ:
-        area_projections = []
-        angle_qrst = []
-        angle_qrst_front = []
-        if QRS_loop_area or T_loop_area:
-            area_projections , mean_qrs, mean_t = get_area(show=show_log_loop_area, df=df,
-                                                       waves_peak=waves_peak, start=start,
-                                                       Fs_new=Fs_new,  QRS=QRS_loop_area, 
-                                                       T=T_loop_area)
+                softmax_outputs = torch.softmax(outputs, dim=1)
+                probabilities, predicted_class = torch.max(softmax_outputs, 1)
+
+            if predicted_class == 0:
+                message_predict = f'Здоров (уверенность предсказания {probabilities.item() * 100:.2f}%)__'
+            else:
+                message_predict = f'Болен (уверенность предсказания {probabilities.item() * 100:.2f}%)__'
+            #print(message_predict)
+
+        # Задание ответов по умолчанию
+        area_projections = None
+        angle_qrst = None
+        angle_qrst_front = None
+
+        if count_qrst_angle or T_loop_area or QRS_loop_area:
+            # Поиск площадей при задании на исследование одного периодка ЭКГ:
+            area_projections , mean_qrs, mean_t = get_area(show=show_loops, df=df,
+                                                        waves_peak=waves_peak, start=start,
+                                                        Fs_new=Fs_new,  QRS=QRS_loop_area, 
+                                                       T=T_loop_area, plotly_figures=plotly_figures)
         # Определение угла QRST:
         if count_qrst_angle:
             angle_qrst = find_qrst_angle(mean_qrs, mean_t)
-            angle_qrst_front = find_qrst_angle(mean_qrs[:2], mean_t[:2],
+            angle_qrst_front = find_qrst_angle(mean_qrs[1:], mean_t[1:],
                                                name='во фронтальной плоскости ')
-
+            
             # Отображение трехмерного угла QRST
-            if show_log_qrst_angle:
+            if show_angle:
                 df_qrs = preprocessing_3d(mean_qrs)
                 df_t = preprocessing_3d(mean_t)
-                angle_3d_plot(df_qrs, df_t, df_term)
+                fig = angle_3d_plot(df_qrs, df_t, df_term)
+                plotly_figures.append(fig)
+                
     
-
-    # Сохранение масштабированных изображений
-    if save_images and (n_term_finish == None or n_term_finish == n_term_start):
-        file_name_without_extension = os.path.splitext(os.path.basename(data_edf))[0]
-        name = f'{file_name_without_extension}_period_{n_term_start}.png'
-        
-        # Создадим папки для записи если их еще нет:
-        if not os.path.exists('saved_vECG'):
-            os.makedirs('saved_vECG')
-        if not os.path.exists('saved_vECG/XY_plane'):
-            os.makedirs('saved_vECG/XY_plane')
-        if not os.path.exists('saved_vECG/YZ_plane'):
-            os.makedirs('saved_vECG/YZ_plane')
-        if not os.path.exists('saved_vECG/XZ_plane'):
-            os.makedirs('saved_vECG/XZ_plane')      
-
-        # После каждого plt.show() добавим код для сохранения графика в ЧБ формате
-        plt.figure(figsize=(7, 7), dpi=150)
-        plt.xlim([-1.03, 1.03])
-        plt.ylim([-1.03, 1.03])
-        plt.plot(df_term.x_scaled, df_term.y_scaled, color='black')
-        plt.axis('off')  # Отключить оси и подписи
-        name_save = 'saved_vECG/XY_plane/' + name
-        plt.savefig(name_save, bbox_inches='tight', pad_inches=0, transparent=True, facecolor='white')
-        plt.close()
-
-        plt.figure(figsize=(7, 7), dpi=150)
-        plt.xlim([-1.03, 1.03])
-        plt.ylim([-1.03, 1.03])
-        plt.plot(df_term.y_scaled, df_term.z_scaled, color='black')
-        plt.axis('off')  # Отключить оси и подписи
-        name_save = 'saved_vECG/YZ_plane/' + name
-        plt.savefig(name_save, bbox_inches='tight', pad_inches=0, transparent=True, facecolor='white')
-        plt.close()
-
-        plt.figure(figsize=(7, 7), dpi=150)
-        plt.xlim([-1.03, 1.03])
-        plt.ylim([-1.03, 1.03])  
-        plt.plot(df_term.x_scaled, df_term.z_scaled, color='black')
-        plt.axis('off')  # Отключить оси и подписи
-        name_save = 'saved_vECG/XZ_plane/' + name
-        plt.savefig(name_save, bbox_inches='tight', pad_inches=0, transparent=True, facecolor='white')
-        plt.close()
-        #print('Фотографии сохранены в папке saved_vECG')
-
-    # Выключаем интерактивный режим, чтобы окна графиков не закрывались сразу
-    plt.ioff()
-    plt.show()
+    output_results['text'] = (area_projections, angle_qrst, angle_qrst_front, message_predict)
+    output_results['charts'] = plotly_figures
     
-    if  n_term_finish == None or n_term_finish == n_term_start:
-        return   area_projections, angle_qrst, angle_qrst_front
+    return output_results
 
 
 
