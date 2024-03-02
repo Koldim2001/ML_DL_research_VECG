@@ -14,6 +14,7 @@ import warnings
 from sklearn.preprocessing import StandardScaler
 import plotly.io as pio
 import pyedflib
+from data_processing_func import *
 
 
 def convert_to_posix_path(windows_path):
@@ -315,6 +316,8 @@ def get_VECG(input_data: dict):
             index=range(raw_data.shape[1]), 
             columns=channels)  
 
+    is_acp = filter_by_acp_presence(raw_data[0], 2)
+
     # Переименование столбцов при необходимости:
     if 'ECG I-Ref' in df.columns:
         df = rename_columns(df)
@@ -416,6 +419,8 @@ def get_VECG(input_data: dict):
     # Поиск точек pqst:
     _, waves_peak = nk.ecg_delineate(signal, rpeaks, sampling_rate=Fs_new, method="peak")
 
+    has_wide_qrs = filter_by_qrs_complexes_widths(waves_peak, time_new)
+    has_form_diffs = filter_by_different_qrs_form(signal, waves_peak, time_new)
     # Отображение PQST точек на сигнале первого отведения (или второго при ошибке на первом)
     if show_detect_pqrst:
         # Создаем график сигнала
