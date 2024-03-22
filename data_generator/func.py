@@ -1,8 +1,14 @@
-import math
-import pandas as pd
-from matplotlib import pyplot as plt
-import numpy as np
 import os
+import math
+import warnings
+
+import pyedflib
+import pandas as pd
+import numpy as np
+import random
+
+from plotly.subplots import make_subplots
+import plotly.subplots as sp
 from scipy import signal
 from matplotlib.pyplot import figure
 import scipy.signal
@@ -10,11 +16,64 @@ import neurokit2 as nk
 import plotly.express as px
 from shapely.geometry import Polygon
 import plotly.graph_objects as go
-import warnings
-from sklearn.preprocessing import StandardScaler
+import torch
+from torchvision import transforms
 import plotly.io as pio
-import pyedflib
+
+from models_for_inference.model import *
 from data_processing_func import *
+
+
+
+def visualize_rotate(data):
+    # Функция по визуализации вращения по нажатию кнопки
+    x_eye, y_eye, z_eye = 1.25, 1.25, 0.8
+    frames=[]
+
+    def rotate_z(x, y, z, theta):
+        w = x+1j*y
+        return np.real(np.exp(1j*theta)*w), np.imag(np.exp(1j*theta)*w), z
+
+    for t in np.arange(0, 10.26, 0.025):
+        xe, ye, ze = rotate_z(x_eye, y_eye, z_eye, -t)
+        frames.append(dict(layout=dict(scene=dict(camera=dict(eye=dict(x=xe, 
+                                                                       y=ye,
+                                                                       z=ze))))))
+    fig = go.Figure(data=data,
+        layout=go.Layout(
+            updatemenus=[dict(type='buttons',
+                showactive=False,
+                y=1,
+                x=0.8,
+                xanchor='left',
+                yanchor='bottom',
+                pad=dict(t=45, r=10),
+                buttons=[dict(label='Запуск вращения',
+                    method='animate',
+                    args=[None, dict(frame=dict(duration=20, redraw=True),
+                        transition=dict(duration=0),
+                        fromcurrent=True,
+                        mode='immediate'
+                        )]
+                    )
+                ])]
+        ),
+        frames=frames
+    )
+
+    return fig
+
+
+def show_3d(x, y, z):
+    # Отображение 3D интерактивного окна
+    data=[go.Scatter3d(x=x, y=y, z=z,
+                       mode='lines+markers', opacity=1)]
+    fig = visualize_rotate(data)
+    fig.update_traces(marker=dict(size=3),
+                      line=dict(width=5))
+    fig.update_layout(title_text="3D представление ВЭКГ")
+    fig.update_layout(height=800)
+    return fig
 
 
 def convert_to_posix_path(windows_path):
@@ -32,8 +91,22 @@ def rename_columns(df):
     return df
 
 
+def discrete_signal_resample_for_DL(signal, old_sampling_rate, new_sampling_rate):
+    """
+    Осуществление ресемплирования перед DL инференсом
+    """
+    num_points_new = int(len(signal) * new_sampling_rate / old_sampling_rate)
+
+    # Используем scipy.signal.resample для изменения дискретизации
+    new_signal = scipy.signal.resample(signal, num_points_new)
+
+    return new_signal
+
+
 def discrete_signal_resample(signal, time, new_sampling_rate):
-    ## Производит ресемплирование
+    """
+    Осуществление ресемплирования
+    """
     # Текущая частота дискретизации
     current_sampling_rate = 1 / np.mean(np.diff(time))
 
@@ -63,7 +136,9 @@ def find_mean(df_term):
 
 
 def find_qrst_angle(mean_qrs, mean_t, name=''):
-    ## Находит угол QRST с помощью скалярного произведения
+    """
+    Определение угла QRST
+    """
     # Преобразуем списки в numpy массивы
     mean_qrs = np.array(mean_qrs)
     mean_t = np.array(mean_t)
@@ -98,29 +173,59 @@ def make_vecg(df_term):
     return df_term
 
     
-def loop(df_term, name, show=False):
+def loop(df_term, name, plotly_figures, show=False):
     # Подсчет и отображение площади петли
     if name == 'T':
         name_loop = 'ST-T'
     else:
         name_loop = name
 
-    points = list(zip(df_term['x'], df_term['y']))
+    if show:
+        # Создаем подокно с тремя графиками в ряд
+        fig = sp.make_subplots(rows=1, cols=3, subplot_titles=('Фронтальная плоскость', 
+                                                                'Сагиттальная плоскость',
+                                                                'Аксиальная плоскость'))
+
+        # Создаем графики для каждой плоскости
+        trace1 = go.Scatter(x=df_term['y'], y=df_term['z'], mode='lines',
+                            name='Фронтальная плоскость', showlegend=False)
+        trace2 = go.Scatter(x=df_term['x'], y=df_term['z'], mode='lines',
+                            name='Сагиттальная плоскость', showlegend=False)
+        trace3 = go.Scatter(x=df_term['y'], y=df_term['x'], mode='lines',
+                            name='Аксиальная плоскость', showlegend=False)
+        
+        # Добавляем графики в подокно
+        fig.add_trace(trace1, row=1, col=1)
+        fig.add_trace(trace2, row=1, col=2)
+        fig.add_trace(trace3, row=1, col=3)
+
+        # Установка общего заголовка
+        title = f'{name_loop} петля'
+        fig.update_layout(title_text=title, title_font_size=16, height=510, width=1300,)
+
+        # Переворачиваем оси 
+        fig.update_xaxes(autorange="reversed", row=1, col=2)  # Переворачиваем ось x для trace2
+        fig.update_yaxes(autorange="reversed", row=1, col=3)   # Переворачиваем ось y для trace3
+
+        # Отображение графика
+        plotly_figures.append(fig)
+    
+    points = list(zip(df_term['y'], df_term['z']))
     area_inside_loop_1 = calculate_area(points)
     #print(f"Площадь петли {name_loop} во фронтальной плоскости:", area_inside_loop_1)
 
-    points = list(zip(df_term['y'], df_term['z']))
+    points = list(zip(df_term['x'], df_term['z']))
     area_inside_loop_2 = calculate_area(points)
     #print(f"Площадь петли {name_loop} в сагиттальной плоскости:", area_inside_loop_2)
 
-    points = list(zip(df_term['x'], df_term['z']))
+    points = list(zip(df_term['y'], df_term['x']))
     area_inside_loop_3 = calculate_area(points)
     #print(f"Площадь петли {name_loop} в аксиальной плоскости:", area_inside_loop_3)
 
     return area_inside_loop_1, area_inside_loop_2, area_inside_loop_3
 
 
-def get_area(show, df, waves_peak, start, Fs_new, QRS, T):
+def get_area(show, df, waves_peak, start, Fs_new, QRS, T, plotly_figures):
     # Выделяет области петель для дальнейшей обработки - подсчета угла QRST и площадей
     area = []
     # Уберем nan:
@@ -132,14 +237,15 @@ def get_area(show, df, waves_peak, start, Fs_new, QRS, T):
     # Ищем ближний пик к R пику
     closest_Q_peak = min(waves_peak['ECG_Q_Peaks'], key=lambda x: abs(x - start))
     closest_S_peak = min(waves_peak['ECG_S_Peaks'], key=lambda x: abs(x - start))
+
+
     df_new = df.copy()
     df_term = df_new.iloc[closest_Q_peak:closest_S_peak,:]
     df_row = df_new.iloc[closest_Q_peak:closest_Q_peak+1,:]
     df_term = pd.concat([df_term, df_row])
-    df_term = make_vecg(df_term)
     mean_qrs = find_mean(df_term)
     if QRS:
-        area = list(loop(df_term, name='QRS', show=show))
+        area = list(loop(df_term, name='QRS', plotly_figures=plotly_figures, show=show))
 
     ## ST-T петля
     # Ищем ближний пик к R пику
@@ -150,10 +256,9 @@ def get_area(show, df, waves_peak, start, Fs_new, QRS, T):
     df_term = df_new.iloc[closest_S_peak + int(0.025*Fs_new) : closest_T_end, :]
     df_row = df_new.iloc[closest_S_peak+int(0.025*Fs_new):closest_S_peak+int(0.025*Fs_new)+1,:]
     df_term = pd.concat([df_term, df_row])
-    df_term = make_vecg(df_term)
     mean_t = find_mean(df_term)
     if T:
-        area.extend(list(loop(df_term, name='T', show=show)))
+        area.extend(list(loop(df_term, name='T', plotly_figures=plotly_figures, show=show)))
     return area, mean_qrs, mean_t
 
 
@@ -214,8 +319,11 @@ def angle_3d_plot(df1, df2, df3):
             name='ВЭКГ'
         )
     )
-    fig.update_layout(margin=dict(l=0, r=0, b=0, t=0))
-    fig.show()
+    fig.update_layout(title_text="Угол QRST")
+    fig.update_layout(height=800)
+    return fig
+  
+ 
 
 
 def apply_filter_mean(column, window_size):
@@ -231,6 +339,7 @@ def apply_filter_mean(column, window_size):
             filtered_column.append(filtered_value)
 
     return filtered_column
+
 
 
 
@@ -419,8 +528,9 @@ def get_VECG(input_data: dict):
     # Поиск точек pqst:
     _, waves_peak = nk.ecg_delineate(signal, rpeaks, sampling_rate=Fs_new, method="peak")
 
-    has_wide_qrs = filter_by_qrs_complexes_widths(waves_peak, time_new)
-    has_form_diffs = filter_by_different_qrs_form(signal, waves_peak, time_new)
+    #has_wide_qrs = filter_by_qrs_complexes_widths(waves_peak, time_new)
+    #has_form_diffs = filter_by_different_qrs_form(signal, waves_peak, time_new)
+
     # Отображение PQST точек на сигнале первого отведения (или второго при ошибке на первом)
     if show_detect_pqrst:
         # Создаем график сигнала
@@ -727,24 +837,7 @@ def get_VECG(input_data: dict):
 
 
 
-
-
-
-
-
-
-
-
-
-
-
-
-
 ##########################################################################
-
-import os
-import pandas as pd
-import random
 
 
 
