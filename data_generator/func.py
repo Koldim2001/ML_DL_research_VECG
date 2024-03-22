@@ -21,7 +21,7 @@ from torchvision import transforms
 import plotly.io as pio
 
 from models_for_inference.model import *
-from data_processing_func import *
+from data_processing_func import filter_by_acp_presence
 
 
 
@@ -243,6 +243,7 @@ def get_area(show, df, waves_peak, start, Fs_new, QRS, T, plotly_figures):
     df_term = df_new.iloc[closest_Q_peak:closest_S_peak,:]
     df_row = df_new.iloc[closest_Q_peak:closest_Q_peak+1,:]
     df_term = pd.concat([df_term, df_row])
+
     mean_qrs = find_mean(df_term)
     if QRS:
         area = list(loop(df_term, name='QRS', plotly_figures=plotly_figures, show=show))
@@ -425,7 +426,12 @@ def get_VECG(input_data: dict):
             index=range(raw_data.shape[1]), 
             columns=channels)  
 
+    # Проверка на наличие кардиостимулятора у пациента
     is_acp = filter_by_acp_presence(raw_data[0], 2)
+    if is_acp:
+        output_results['text'] = 'is_acp'
+        output_results['charts'] = plotly_figures
+        return output_results
 
     # Переименование столбцов при необходимости:
     if 'ECG I-Ref' in df.columns:
@@ -728,7 +734,7 @@ def get_VECG(input_data: dict):
             name = f'{file_name_without_extension}_period_{n_term_start}.csv'
 
             # Сохраняем выбранные столбцы в CSV файл
-                # Создадим папки для записи если их еще нет:
+            # Создадим папки для записи если их еще нет:
             if not os.path.exists('point_cloud_dataset'):
                 os.makedirs('point_cloud_dataset')
             df_save.to_csv('point_cloud_dataset/' + name, index=False)

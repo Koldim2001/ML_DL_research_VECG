@@ -4,8 +4,8 @@ import numpy as np
 
 def filter_by_acp_presence(signal, threshold):
     sharp_peaks = check_if_acp(signal, threshold)
-    print(sharp_peaks)
-    if len(sharp_peaks) >= 2:
+    #print(sharp_peaks)
+    if len(sharp_peaks) >= threshold:
         return True
     return False
 
