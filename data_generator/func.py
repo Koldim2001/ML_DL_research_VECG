@@ -21,7 +21,7 @@ from torchvision import transforms
 import plotly.io as pio
 
 from models_for_inference.model import *
-from data_processing_func import filter_by_acp_presence
+from data_processing_func import *
 
 
 
@@ -534,8 +534,22 @@ def get_VECG(input_data: dict):
     # Поиск точек pqst:
     _, waves_peak = nk.ecg_delineate(signal, rpeaks, sampling_rate=Fs_new, method="peak")
 
-    #has_wide_qrs = filter_by_qrs_complexes_widths(waves_peak, time_new)
-    #has_form_diffs = filter_by_different_qrs_form(signal, waves_peak, time_new)
+
+   # ФИЛЬТРАЦИЯ NEW
+    try:
+        if long_QRS(df, waves_peak, rpeaks, Fs_new):
+            print('long_QRS')
+            return 'long_QRS'
+        if hypertrophy_left(df, waves_peak, rpeaks, Fs_new):
+            print('hypertrophy_left')
+            return 'hypertrophy_left'
+        if hypertrophy_right(df, waves_peak, rpeaks, Fs_new):
+            print('hypertrophy_right')
+            return 'hypertrophy_right'
+    except:
+        print('error in long_QRS')
+
+
 
     # Отображение PQST точек на сигнале первого отведения (или второго при ошибке на первом)
     if show_detect_pqrst:
